@@ -144,7 +144,7 @@ def evaluate(model, dataset, args):
         user_embs = model.output_user(seq).data.cpu().numpy()
 
         D, I = gpu_index.search(user_embs, args.topN)
-        item_list = set(I)
+        item_list = I
         rank = 11
         if item_idx in item_list:
             for j, item in enumerate(item_list):
@@ -201,7 +201,7 @@ def evaluate_valid(model, dataset, args):
         user_embs = model.output_user(seq).data.cpu().numpy()
 
         D, I = gpu_index.search(user_embs, args.topN)
-        item_list = set(I)
+        item_list = I
         rank = 11
         if item_idx in item_list:
             for j, item in enumerate(item_list):
