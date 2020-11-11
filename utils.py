@@ -5,7 +5,6 @@ import random
 import numpy as np
 from collections import defaultdict
 from multiprocessing import Process, Queue
-from annoy import AnnoyIndex
 import faiss
 
 # sampler for batch generation
