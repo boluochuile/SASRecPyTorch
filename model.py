@@ -144,10 +144,10 @@ class SASRec(torch.nn.Module):
         return self.item_emb.weight.data
 
     def positional_encoding(self, seq_inputs):
-        encoded_vec = [pos / np.power(10000.0, 2 * i / self.embedding_dim)
-                       for pos in range(seq_inputs.shape[-1]) for i in range(self.embedding_dim)]
+        encoded_vec = [pos / np.power(10000.0, 2 * i / self.hidden_units)
+                       for pos in range(seq_inputs.shape[-1]) for i in range(self.hidden_units)]
         encoded_vec[::2] = np.sin(encoded_vec[::2])
         encoded_vec[1::2] = np.cos(encoded_vec[1::2])
-        encoded_vec = torch.from_numpy(encoded_vec).view(-1, self.embedding_dim).float()
+        encoded_vec = torch.from_numpy(encoded_vec).view(-1, self.hidden_units).float()
 
         return encoded_vec
