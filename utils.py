@@ -5,7 +5,7 @@ import random
 import numpy as np
 from collections import defaultdict
 from multiprocessing import Process, Queue
-import faiss
+# import faiss
 
 # sampler for batch generation
 def random_neq(l, r, s):

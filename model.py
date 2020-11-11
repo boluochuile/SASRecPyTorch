@@ -148,6 +148,6 @@ class SASRec(torch.nn.Module):
                        for pos in range(seq_inputs.shape[-1]) for i in range(self.hidden_units)]
         encoded_vec[::2] = np.sin(encoded_vec[::2])
         encoded_vec[1::2] = np.cos(encoded_vec[1::2])
-        encoded_vec = torch.from_numpy(encoded_vec).view(-1, self.hidden_units).float()
+        encoded_vec = torch.from_numpy(np.array(encoded_vec)).view(-1, self.hidden_units).float().to(self.dev)
 
         return encoded_vec
