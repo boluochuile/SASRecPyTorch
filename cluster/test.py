@@ -19,7 +19,7 @@ if __name__ == '__main__':
     s = time.time()
     for i in range(3):
         # best_centers, best_distance
-        codebook, distortion = kmeans(pt_whitened[i], 4, batch_size=200, iter=10)
+        codebook, distortion = kmeans(pt_whitened[i], 4, batch_size=200, iter=5)
         print(codebook)
         torch.cuda.synchronize()
         e = time.time()

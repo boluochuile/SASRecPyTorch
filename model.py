@@ -105,7 +105,7 @@ class SASRec(torch.nn.Module):
         user_eb = None
         for i in range(self.batch_size):
             # best_centers, best_distance
-            best_centers, best_distance = kmeans(log_feats[i], self.num_interest, batch_size=self.maxlen, iter=10)
+            best_centers, best_distance = kmeans(log_feats[i], self.num_interest, batch_size=self.maxlen, iter=5)
             if user_eb is None:
                 user_eb = best_centers
             else:
