@@ -27,6 +27,8 @@ parser.add_argument('--l2_emb', default=0.0, type=float)
 parser.add_argument('--device', default='cpu', type=str)
 parser.add_argument('--inference_only', default=False, type=str2bool)
 parser.add_argument('--state_dict_path', default=None, type=str)
+parser.add_argument('--topN', default=10, type=int)
+parser.add_argument('--num_interest', default=6, type=int)
 
 if __name__ == '__main__':
     args = parser.parse_args()
@@ -79,7 +81,7 @@ if __name__ == '__main__':
 
     for epoch in range(epoch_start_idx, args.num_epochs + 1):
         if args.inference_only: break # just to decrease identition
-        for step in tqdm(range(num_batch), total=num_batch, ncols=70, leave=False, unit='b'):
+        for step in tqdm(range(1), total=1, ncols=70, leave=False, unit='b'):
             u, seq, pos, neg = sampler.next_batch() # tuples to ndarray
             u, seq, pos, neg = np.array(u), np.array(seq), np.array(pos), np.array(neg)
             pos_logits, neg_logits = model(u, seq, pos, neg)
@@ -88,13 +90,17 @@ if __name__ == '__main__':
             adam_optimizer.zero_grad()
             # 返回值不为0的下标
             indices = np.where(pos != 0)
-            loss = bce_criterion(pos_logits[indices], pos_labels[indices])
+            loss = bce_criterion(pos_logits, pos_labels)
+            # pos = pos[:, -1]
+            # pos_eb = model.getEmbedding(pos)
+            # loss = bce_criterion(pos_logits, pos)
             loss += bce_criterion(neg_logits[indices], neg_labels[indices])
             # parm: embedding的所以权重值
             for param in model.item_emb.parameters():
                 loss += args.l2_emb * torch.norm(param)
             loss.backward()
             adam_optimizer.step()
+            # t_test = evaluate(model, dataset, args)
             # print("loss in epoch {} iteration {}: {}".format(epoch, step, loss.item())) # expected 0.4~0.6 after init few epochs
 
         if epoch % 20 == 0:
@@ -106,7 +112,6 @@ if __name__ == '__main__':
             t_valid = evaluate_valid(model, dataset, args)
             print('epoch:%d, time: %f(s), valid (NDCG@10: %.4f, HR@10: %.4f), test (NDCG@10: %.4f, HR@10: %.4f)'
                     % (epoch, T, t_valid[0], t_valid[1], t_test[0], t_test[1]))
-
             f.write(str(t_valid) + ' ' + str(t_test) + '\n')
             f.flush()
             t0 = time.time()

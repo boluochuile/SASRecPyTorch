@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-
+from cluster.kmeans import kmeans
 
 class PointWiseFeedForward(torch.nn.Module):
     def __init__(self, hidden_units, dropout_rate):
@@ -41,6 +41,10 @@ class SASRec(torch.nn.Module):
         self.attention_layers = torch.nn.ModuleList()
         self.forward_layernorms = torch.nn.ModuleList()
         self.forward_layers = torch.nn.ModuleList()
+        self.hidden_units = args.hidden_units
+        self.batch_size = args.batch_size
+        self.maxlen = args.maxlen
+        self.num_interest = args.num_interest
 
         self.last_layernorm = torch.nn.LayerNorm(args.hidden_units, eps=1e-8)
 
@@ -97,35 +101,43 @@ class SASRec(torch.nn.Module):
 
         # (b, seq_len, embedding_dim)
         log_feats = self.last_layernorm(seqs) # (U, T, C) -> (U, -1, C)
+        # (b*num_interest, embedding_dim)
+        user_eb = None
+        for i in range(self.batch_size):
+            # best_centers, best_distance
+            best_centers, best_distance = kmeans(log_feats[i], self.num_interest, batch_size=self.maxlen, iter=10)
+            if user_eb is None:
+                user_eb = best_centers
+            else:
+                user_eb = torch.cat((user_eb, best_centers), 0)
 
-        return log_feats
+        return user_eb, log_feats
 
     def forward(self, user_ids, log_seqs, pos_seqs, neg_seqs): # for training
-        # (b, seq_len, embedding_dim)
-        log_feats = self.log2feats(log_seqs) # user_ids hasn't been used yet
 
-        pos_embs = self.item_emb(torch.LongTensor(pos_seqs).to(self.dev))
+        user_eb, log_feats = self.log2feats(log_seqs) # user_ids hasn't been used yet
         neg_embs = self.item_emb(torch.LongTensor(neg_seqs).to(self.dev))
-
-        pos_logits = (log_feats * pos_embs).sum(dim=-1)
         neg_logits = (log_feats * neg_embs).sum(dim=-1)
 
-        # pos_pred = self.pos_sigmoid(pos_logits)
-        # neg_pred = self.neg_sigmoid(neg_logits)
+        user_eb = user_eb.view(self.batch_size, self.num_interest, self.hidden_units)
+        pos_embs = self.item_emb(torch.LongTensor(pos_seqs).to(self.dev))
+        pos_embs = pos_embs[:, -1, :].unsqueeze(1).repeat(1, self.num_interest, 1)
+        pos_logits = (user_eb * pos_embs).sum(dim=-1)
+        user_eb = user_eb.view(-1, self.hidden_units)
+        h = torch.from_numpy(np.array([i * self.num_interest for i in range(self.batch_size)])).to(self.dev)
+        # (b, 1)
+        index = torch.argmax(pos_logits, -1)
+        user_eb = torch.index_select(user_eb, 0, index + h)
 
-        # print(pos_logits.shape)
-        # (b, seq_len)
-        return pos_logits, neg_logits # pos_pred, neg_pred
+        temp = self.item_emb(torch.LongTensor(pos_seqs[:, -1]).to(self.dev))
+        user_eb = (user_eb * temp).sum(dim=-1)
 
-    def predict(self, user_ids, log_seqs, item_indices): # for inference
-        log_feats = self.log2feats(log_seqs) # user_ids hasn't been used yet
+        return user_eb, neg_logits
 
-        final_feat = log_feats[:, -1, :] # only use last QKV classifier, a waste
+    def output_user(self, log_seqs): # for inference
+        user_eb, log_feats = self.log2feats(log_seqs)
 
-        item_embs = self.item_emb(torch.LongTensor(item_indices).to(self.dev)) # (U, I, C)
+        return user_eb
 
-        logits = item_embs.matmul(final_feat.unsqueeze(-1)).squeeze(-1)
-
-        # preds = self.pos_sigmoid(logits) # rank same item list for different users
-
-        return logits # preds # (U, I)
+    def output_item(self):
+        return self.item_emb.weight.data
