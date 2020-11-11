@@ -81,7 +81,7 @@ if __name__ == '__main__':
 
     for epoch in range(epoch_start_idx, args.num_epochs + 1):
         if args.inference_only: break # just to decrease identition
-        for step in tqdm(range(1), total=1, ncols=70, leave=False, unit='b'):
+        for step in tqdm(range(num_batch), total=num_batch, ncols=70, leave=False, unit='b'):
             u, seq, pos, neg = sampler.next_batch() # tuples to ndarray
             u, seq, pos, neg = np.array(u), np.array(seq), np.array(pos), np.array(neg)
             pos_logits, neg_logits = model(u, seq, pos, neg)
