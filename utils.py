@@ -141,7 +141,7 @@ def evaluate(model, dataset, args):
         rated.add(0)
         item_idx = [test[u][0]]
 
-        user_embs = model.output_user(seq).numpy().data.cpu().numpy()
+        user_embs = model.output_user(seq).data.cpu().numpy()
 
         D, I = gpu_index.search(user_embs, args.topN)
         item_list = set(I)

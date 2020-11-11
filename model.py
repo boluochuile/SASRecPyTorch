@@ -67,6 +67,8 @@ class SASRec(torch.nn.Module):
             # self.neg_sigmoid = torch.nn.Sigmoid()
 
     def log2feats(self, log_seqs):
+        if len(log_seqs.shape) == 1:
+            log_seqs = np.reshape(log_seqs, (-1, log_seqs.shape[0]))
         seqs = self.item_emb(torch.LongTensor(log_seqs).to(self.dev))
         seqs *= self.item_emb.embedding_dim ** 0.5
         positions = self.positional_encoding(log_seqs)
@@ -104,7 +106,7 @@ class SASRec(torch.nn.Module):
         log_feats = self.last_layernorm(seqs) # (U, T, C) -> (U, -1, C)
         # (b*num_interest, embedding_dim)
         user_eb = None
-        for i in range(self.batch_size):
+        for i in range(log_feats.shape[0]):
             # best_centers, best_distance
             best_centers, best_distance = kmeans(log_feats[i], self.num_interest, batch_size=self.maxlen, iter=5)
             if user_eb is None:
