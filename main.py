@@ -101,13 +101,13 @@ if __name__ == '__main__':
             loss.backward()
             adam_optimizer.step()
             print('loss: ', loss)
-            print('t_test')
-            model.eval()
-            t_test = evaluate(model, dataset, args)
-            model.train()
+            # print('t_test')
+            # model.eval()
+            # t_test = evaluate(model, dataset, args)
+            # model.train()
             # print("loss in epoch {} iteration {}: {}".format(epoch, step, loss.item())) # expected 0.4~0.6 after init few epochs
 
-        if epoch % epoch == 1:
+        if epoch % 20 == 0:
             print('epoch')
             model.eval()
             t1 = time.time() - t0
