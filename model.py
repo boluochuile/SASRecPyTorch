@@ -34,7 +34,7 @@ class SASRec(torch.nn.Module):
         # TODO: loss += args.l2_emb for regularizing embedding vectors during training
         # https://stackoverflow.com/questions/42704283/adding-l1-l2-regularization-in-pytorch
         self.item_emb = torch.nn.Embedding(self.item_num+1, args.hidden_units, padding_idx=0)
-        self.pos_emb = torch.nn.Embedding(args.maxlen, args.hidden_units) # TO IMPROVE
+        # self.pos_emb = torch.nn.Embedding(args.maxlen, args.hidden_units) # TO IMPROVE
         self.emb_dropout = torch.nn.Dropout(p=args.dropout_rate)
 
         self.attention_layernorms = torch.nn.ModuleList() # to be Q for self-attention
@@ -69,8 +69,9 @@ class SASRec(torch.nn.Module):
     def log2feats(self, log_seqs):
         seqs = self.item_emb(torch.LongTensor(log_seqs).to(self.dev))
         seqs *= self.item_emb.embedding_dim ** 0.5
-        positions = np.tile(np.array(range(log_seqs.shape[1])), [log_seqs.shape[0], 1])
-        seqs += self.pos_emb(torch.LongTensor(positions).to(self.dev))
+        positions = positional_encoding(log_seqs)
+        # seqs += self.pos_emb(torch.LongTensor(positions).to(self.dev))
+        seqs += positions
         seqs = self.emb_dropout(seqs)
 
         # log_seqs等于0的变为True，其余的为False
@@ -141,3 +142,12 @@ class SASRec(torch.nn.Module):
 
     def output_item(self):
         return self.item_emb.weight.data
+
+def positional_encoding(self, seq_inputs):
+    encoded_vec = [pos / np.power(10000.0, 2 * i / self.embedding_dim)
+                   for pos in range(seq_inputs.shape[-1]) for i in range(self.embedding_dim)]
+    encoded_vec[::2] = np.sin(encoded_vec[::2])
+    encoded_vec[1::2] = np.cos(encoded_vec[1::2])
+    encoded_vec = torch.from_numpy(encoded_vec).view(-1, self.embedding_dim).float()
+
+    return encoded_vec
