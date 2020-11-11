@@ -100,7 +100,7 @@ if __name__ == '__main__':
                 loss += args.l2_emb * torch.norm(param)
             loss.backward()
             adam_optimizer.step()
-            # t_test = evaluate(model, dataset, args)
+            t_test = evaluate(model, dataset, args)
             # print("loss in epoch {} iteration {}: {}".format(epoch, step, loss.item())) # expected 0.4~0.6 after init few epochs
 
         if epoch % 20 == 0:
