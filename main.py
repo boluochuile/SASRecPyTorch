@@ -100,6 +100,7 @@ if __name__ == '__main__':
                 loss += args.l2_emb * torch.norm(param)
             loss.backward()
             adam_optimizer.step()
+            print('loss: ', loss)
             print('t_test')
             model.eval()
             t_test = evaluate(model, dataset, args)

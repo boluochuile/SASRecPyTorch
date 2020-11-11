@@ -112,7 +112,7 @@ def evaluate(model, dataset, args):
     item_embs = model.output_item().data.cpu().numpy()
 
     try:
-        gpu_index = faiss.IndexFlatL2(args.embedding_dim)
+        gpu_index = faiss.IndexFlatL2(args.hidden_units)
         gpu_index.add(item_embs)
     except Exception as e:
         print(e)
@@ -169,7 +169,7 @@ def evaluate_valid(model, dataset, args):
     item_embs = model.output_item().data.cpu().numpy()
 
     try:
-        gpu_index = faiss.IndexFlatL2(args.embedding_dim)
+        gpu_index = faiss.IndexFlatL2(args.hidden_units)
         gpu_index.add(item_embs)
     except Exception as e:
         print(e)
