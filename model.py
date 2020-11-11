@@ -69,7 +69,7 @@ class SASRec(torch.nn.Module):
     def log2feats(self, log_seqs):
         seqs = self.item_emb(torch.LongTensor(log_seqs).to(self.dev))
         seqs *= self.item_emb.embedding_dim ** 0.5
-        positions = positional_encoding(log_seqs)
+        positions = self.positional_encoding(log_seqs)
         # seqs += self.pos_emb(torch.LongTensor(positions).to(self.dev))
         seqs += positions
         seqs = self.emb_dropout(seqs)
@@ -143,11 +143,11 @@ class SASRec(torch.nn.Module):
     def output_item(self):
         return self.item_emb.weight.data
 
-def positional_encoding(self, seq_inputs):
-    encoded_vec = [pos / np.power(10000.0, 2 * i / self.embedding_dim)
-                   for pos in range(seq_inputs.shape[-1]) for i in range(self.embedding_dim)]
-    encoded_vec[::2] = np.sin(encoded_vec[::2])
-    encoded_vec[1::2] = np.cos(encoded_vec[1::2])
-    encoded_vec = torch.from_numpy(encoded_vec).view(-1, self.embedding_dim).float()
+    def positional_encoding(self, seq_inputs):
+        encoded_vec = [pos / np.power(10000.0, 2 * i / self.embedding_dim)
+                       for pos in range(seq_inputs.shape[-1]) for i in range(self.embedding_dim)]
+        encoded_vec[::2] = np.sin(encoded_vec[::2])
+        encoded_vec[1::2] = np.cos(encoded_vec[1::2])
+        encoded_vec = torch.from_numpy(encoded_vec).view(-1, self.embedding_dim).float()
 
-    return encoded_vec
+        return encoded_vec
