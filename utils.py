@@ -21,7 +21,6 @@ def evaluate_full(test_data, model, args, item_cate_map, save=True, coef=None):
     total_recall = 0.0
     total_ndcg = 0.0
     total_hitrate = 0
-    total_diversity = 0.0
     for src, tgt in test_data:
 
         nick_id, item_id, hist_item, hist_mask = prepare_data(src, tgt)
@@ -47,7 +46,6 @@ def evaluate_full(test_data, model, args, item_cate_map, save=True, coef=None):
                 if recall > 0:
                     total_ndcg += dcg / idcg
                     total_hitrate += 1
-                total_diversity += compute_diversity(I[i], item_cate_map)
         else:
             ni = user_embs.shape[1]
             user_embs = np.reshape(user_embs, [-1, user_embs.shape[-1]])
@@ -99,16 +97,14 @@ def evaluate_full(test_data, model, args, item_cate_map, save=True, coef=None):
                 if recall > 0:
                     total_ndcg += dcg / idcg
                     total_hitrate += 1
-                total_diversity += compute_diversity(list(item_list_set), item_cate_map)
 
         total += len(item_id)
 
     recall = total_recall / total
     ndcg = total_ndcg / total
     hitrate = total_hitrate * 1.0 / total
-    diversity = total_diversity * 1.0 / total
 
-    return {'recall': recall, 'ndcg': ndcg, 'hitrate': hitrate, 'diversity': diversity}
+    return {'recall': recall, 'ndcg': ndcg, 'hitrate': hitrate}
 
 def prepare_data(src, target):
     nick_id, item_id = src
