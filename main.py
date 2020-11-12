@@ -31,7 +31,7 @@ parser.add_argument('--device', default='cpu', type=str)
 parser.add_argument('--inference_only', default=False, type=str2bool)
 parser.add_argument('--state_dict_path', default=None, type=str)
 parser.add_argument('--topN', default=10, type=int)
-parser.add_argument('--num_interest', default=6, type=int)
+parser.add_argument('--num_interest', default=4, type=int)
 parser.add_argument('--test_iter', default=10, type=int)
 parser.add_argument('-p', type=str, default='train', help='train | test')
 parser.add_argument('--max_iter', type=int, default=1000, help='(k)')
@@ -62,6 +62,8 @@ def train(train_file, valid_file, test_file, cate_file, item_count, dataset = "b
         iter = 0
         # train_data: userid, itemid, sql_num
         for src, tgt in train_data:
+            if iter % test_iter == 0:
+                print('The', iter / test_iter + 1, 'test_iter:')
             iter += 1
             """
             训练
@@ -74,11 +76,11 @@ def train(train_file, valid_file, test_file, cate_file, item_count, dataset = "b
             adam_optimizer.zero_grad()
             # 负采样
             loss = sample_softmax_loss(item_embs, item_id, item_count, user_eb, hist_item)
-            print('iter:', iter, 'loss: ', loss.item())
             loss.backward()
             adam_optimizer.step()
 
-            if iter % 1 == 0:
+            if iter % test_iter == 0:
+                print('test_iter:', iter / test_iter, 'loss: ', loss.item())
                 model.eval()
                 metrics = evaluate_full(valid_data, model, args, item_cate_map)
                 log_str = ', '.join(['valid ' + key + ': %.6f' % value for key, value in metrics.items()])
@@ -99,6 +101,9 @@ def train(train_file, valid_file, test_file, cate_file, item_count, dataset = "b
                 print("time interval: %.4f min" % ((test_time-start_time)/60.0))
                 sys.stdout.flush()
                 model.train()
+
+            if iter >= max_iter:
+                break
 
     except KeyboardInterrupt:
         print('-' * 89)
