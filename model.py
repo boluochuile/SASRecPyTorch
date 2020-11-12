@@ -108,7 +108,8 @@ class SASRec(torch.nn.Module):
                 user_eb = best_centers
             else:
                 user_eb = torch.cat((user_eb, best_centers), 0)
-
+        print(user_eb.shape)
+        print(user_eb.view(self.batch_size, self.num_interest, self.hidden_units))
         return user_eb.view(self.batch_size, self.num_interest, self.hidden_units), log_feats
 
     def forward(self, log_seqs): # for training
