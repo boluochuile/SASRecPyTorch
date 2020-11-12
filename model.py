@@ -41,6 +41,8 @@ class SASRec(torch.nn.Module):
         self.maxlen = args.maxlen
         self.num_interest = args.num_interest
         self.softmax = torch.nn.Softmax(1)
+        # self.liner1 = torch.nn.Linear(self.hidden_units * 4)
+        # self.a1 = torch.nn.Tanh
 
         self.last_layernorm = torch.nn.LayerNorm(args.hidden_units, eps=1e-8)
 
@@ -111,9 +113,34 @@ class SASRec(torch.nn.Module):
 
         return user_eb.view(log_feats.shape[0], self.num_interest, self.hidden_units), log_feats
 
+    def log2feats2(self, log_seqs):
+
+        seqs = self.item_emb(torch.LongTensor(log_seqs).to(self.dev))
+        seqs *= self.item_emb.embedding_dim ** 0.5
+
+        # log_seqs等于0的变为True，其余的为False
+        timeline_mask = torch.BoolTensor(log_seqs == 0).to(self.dev)
+        # ~ 取反
+        seqs *= ~timeline_mask.unsqueeze(-1) # broadcast in last dim
+
+        # (b, seq_len, embedding_dim)
+        # log_feats = self.last_layernorm(seqs) # (U, T, C) -> (U, -1, C)
+        # (b*num_interest, embedding_dim)
+        user_eb = None
+        for i in range(seqs.shape[0]):
+            # best_centers, best_distance
+            best_centers, best_distance = kmeans(seqs[i], self.num_interest, batch_size=self.maxlen, iter=5)
+            if user_eb is None:
+                user_eb = best_centers
+            else:
+                user_eb = torch.cat((user_eb, best_centers), 0)
+
+        return user_eb.view(seqs.shape[0], self.num_interest, self.hidden_units), seqs
+
+
     def forward(self, log_seqs): # for training
 
-        user_eb, log_feats = self.log2feats(log_seqs) # user_ids hasn't been used yet
+        user_eb, log_feats = self.log2feats2(log_seqs) # user_ids hasn't been used yet
         # neg_embs = self.item_emb(torch.LongTensor(neg_seqs).to(self.dev))
         # neg_logits = (log_feats * neg_embs).sum(dim=-1)
         #
@@ -133,7 +160,7 @@ class SASRec(torch.nn.Module):
         return user_eb
 
     def predict(self, log_seqs): # for inference
-        user_eb, log_feats = self.log2feats(log_seqs)
+        user_eb, log_feats = self.log2feats2(log_seqs)
         return user_eb
 
     def output_item(self):
@@ -142,7 +169,7 @@ class SASRec(torch.nn.Module):
     # 找出与候选向量最相似的用户兴趣
     def output_user(self, log_seqs, item_list, hist_mask):
         # (b, num_interest, embedding_dim)
-        user_eb, log_feats = self.log2feats(log_seqs)
+        user_eb, log_feats = self.log2feats2(log_seqs)
         # (b, embedding_dim)
         item_list_emb = self.item_emb(torch.from_numpy(item_list).long().to(self.dev))
 

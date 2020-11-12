@@ -76,6 +76,8 @@ def train(train_file, valid_file, test_file, cate_file, item_count, dataset = "b
             adam_optimizer.zero_grad()
             # 负采样
             loss = sample_softmax_loss(item_embs, item_id, item_count, user_eb, hist_item)
+            for param in model.item_emb.parameters():
+                loss += args.l2_emb * torch.norm(param)
             loss.backward()
             adam_optimizer.step()
 
