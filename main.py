@@ -54,6 +54,8 @@ def train(train_file, valid_file, test_file, cate_file, item_count, dataset = "b
     print('training begin')
     sys.stdout.flush()
 
+    best_metric = 0
+
     start_time = time.time()
     try:
         trials = 0
