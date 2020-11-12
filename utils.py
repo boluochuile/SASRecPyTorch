@@ -26,7 +26,7 @@ def evaluate_full(test_data, model, args, item_cate_map, save=True, coef=None):
 
         nick_id, item_id, hist_item, hist_mask = prepare_data(src, tgt)
 
-        user_embs = model.predict([np.array(hist_item), np.array(hist_mask)]).data.cpu().numpy()
+        user_embs = model.predict(np.array(hist_item), np.array(hist_mask)).data.cpu().numpy()
 
         # 单兴趣表示[batch, embedding_dim]
         if len(user_embs.shape) == 2:
