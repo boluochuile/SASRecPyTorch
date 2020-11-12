@@ -1,11 +1,12 @@
 import os
+import sys
 import time
 import torch
 import argparse
 
 from model import SASRec
-from tqdm import tqdm
 from utils import *
+from data_iterator import *
 
 def str2bool(s):
     if s not in {'false', 'true'}:
@@ -29,105 +30,117 @@ parser.add_argument('--inference_only', default=False, type=str2bool)
 parser.add_argument('--state_dict_path', default=None, type=str)
 parser.add_argument('--topN', default=10, type=int)
 parser.add_argument('--num_interest', default=6, type=int)
-
-if __name__ == '__main__':
-    args = parser.parse_args()
-    if not os.path.isdir(args.dataset + '_' + args.train_dir):
-        os.makedirs(args.dataset + '_' + args.train_dir)
-    with open(os.path.join(args.dataset + '_' + args.train_dir, 'args.txt'), 'w') as f:
-        f.write('\n'.join([str(k) + ',' + str(v) for k, v in sorted(vars(args).items(), key=lambda x: x[0])]))
-    f.close()
-
-    dataset = data_partition(args.dataset)
-    [user_train, user_valid, user_test, usernum, itemnum] = dataset
-    num_batch = len(user_train) // args.batch_size # tail? + ((len(user_train) % args.batch_size) != 0)
-    cc = 0.0
-    for u in user_train:
-        cc += len(user_train[u])
-    print('average sequence length: %.2f' % (cc / len(user_train)))
-
-    f = open(os.path.join(args.dataset + '_' + args.train_dir, 'log.txt'), 'w')
-
-    # (user, seq, pos, neg)
-    sampler = WarpSampler(user_train, usernum, itemnum, batch_size=args.batch_size, maxlen=args.maxlen, n_workers=3)
-    model = SASRec(usernum, itemnum, args).to(args.device) # no ReLU activation in original SASRec implementation?
-    model.train() # enable model training
-
-    epoch_start_idx = 1
-    if args.state_dict_path is not None:
-        try:
-            model.load_state_dict(torch.load(args.state_dict_path, map_location=torch.device(args.device)))
-            tail = args.state_dict_path[args.state_dict_path.find('epoch=') + 6:]
-            epoch_start_idx = int(tail[:tail.find('.')]) + 1
-        except: # in case your pytorch version is not 1.6 etc., pls debug by pdb if load weights failed
-            print('failed loading state_dicts, pls check file path: ', end="")
-            print(args.state_dict_path)
-            print('pdb enabled for your quick check, pls type exit() if you do not need it')
-            import pdb; pdb.set_trace()
+parser.add_argument('--test_iter', default=10, type=int)
+parser.add_argument('-p', type=str, default='train', help='train | test')
+parser.add_argument('--max_iter', type=int, default=1000, help='(k)')
+parser.add_argument('--patience', type=int, default=50)
+parser.add_argument('--model_type', type=str, default='none', help='DNN | GRU4REC | ..')
 
 
-    if args.inference_only:
-        model.eval()
-        t_test = evaluate(model, dataset, args)
-        print('test (NDCG@10: %.4f, HR@10: %.4f)' % (t_test[0], t_test[1]))
+def train(train_file, valid_file, test_file, cate_file, item_count, dataset = "book", batch_size = 128,
+        maxlen = 100, test_iter = 50, model_type = 'DNN', lr = 0.001, max_iter = 100, patience = 20):
 
-    # ce_criterion = torch.nn.CrossEntropyLoss()
-    # https://github.com/NVIDIA/pix2pixHD/issues/9 how could an old bug appear again...
-    bce_criterion = torch.nn.BCEWithLogitsLoss() # torch.nn.BCELoss()
+    item_cate_map = load_item_cate(cate_file)
+
+    # (user_id_list, item_id_list), (hist_item_list, hist_mask_list)
+    train_data = DataIterator(train_file, batch_size, maxlen, train_flag=0)
+    valid_data = DataIterator(valid_file, batch_size, maxlen, train_flag=1)
+
+    model = SASRec(item_count, args).to(args.device)
+    model.train()  # enable model training
+
     adam_optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.98))
 
-    T = 0.0
-    t0 = time.time()
+    print('training begin')
+    sys.stdout.flush()
 
-    for epoch in range(epoch_start_idx, args.num_epochs + 1):
-        if args.inference_only: break # just to decrease identition
-        for step in tqdm(range(num_batch), total=num_batch, ncols=70, leave=False, unit='b'):
-            u, seq, pos, neg = sampler.next_batch() # tuples to ndarray
-            u, seq, pos, neg = np.array(u), np.array(seq), np.array(pos), np.array(neg)
-            pos_logits, neg_logits = model(u, seq, pos, neg)
-            pos_labels, neg_labels = torch.ones(pos_logits.shape, device=args.device), torch.zeros(neg_logits.shape, device=args.device)
-            # print("\neye ball check raw_logits:"); print(pos_logits); print(neg_logits) # check pos_logits > 0, neg_logits < 0
+    start_time = time.time()
+    try:
+        trials = 0
+        iter = 0
+        # train_data: userid, itemid, sql_num
+        for src, tgt in train_data:
+            iter += 1
+            """
+            训练
+            """
+            nick_id, item_id, hist_item, hist_mask = prepare_data(src, tgt)
+            nick_id, item_id, hist_item, hist_mask = np.array(nick_id), np.array(item_id), np.array(hist_item), np.array(hist_mask)
+            model(hist_item)
+            user_eb = model.output_user(hist_item, item_id, hist_mask)
+            item_embs = model.output_item()
             adam_optimizer.zero_grad()
-            # 返回值不为0的下标
-            indices = np.where(pos != 0)
-            loss = bce_criterion(pos_logits, pos_labels)
-            # pos = pos[:, -1]
-            # pos_eb = model.getEmbedding(pos)
-            # loss = bce_criterion(pos_logits, pos)
-            loss += bce_criterion(neg_logits[indices], neg_labels[indices])
-            # parm: embedding的所以权重值
-            for param in model.item_emb.parameters():
-                loss += args.l2_emb * torch.norm(param)
+            # 负采样
+            loss = sample_softmax_loss(item_embs, item_id, item_count, user_eb, hist_item)
+            print('iter:', iter, 'loss: ', loss.item())
             loss.backward()
             adam_optimizer.step()
-            # print('t_test')
-            # model.eval()
-            # t_test = evaluate(model, dataset, args)
-            # model.train()
-            # print("loss in epoch {} iteration {}: {}".format(epoch, step, loss.item())) # expected 0.4~0.6 after init few epochs
-        print('loss: ', loss)
 
-        if epoch % 2 == 0:
-            print('epoch')
-            model.eval()
-            t1 = time.time() - t0
-            T += t1
-            print('Evaluating', end='')
-            t_test = evaluate(model, dataset, args)
-            t_valid = evaluate_valid(model, dataset, args)
-            print('epoch:%d, time: %f(s), valid (NDCG@10: %.4f, HR@10: %.4f), test (NDCG@10: %.4f, HR@10: %.4f)'
-                    % (epoch, T, t_valid[0], t_valid[1], t_test[0], t_test[1]))
-            f.write(str(t_valid) + ' ' + str(t_test) + '\n')
-            f.flush()
-            t0 = time.time()
-            model.train()
+            if iter % 1 == 0:
+                model.eval()
+                metrics = evaluate_full(valid_data, model, args, item_cate_map)
+                log_str = ', '.join(['valid ' + key + ': %.6f' % value for key, value in metrics.items()])
+                print(log_str)
 
-        if epoch == args.num_epochs:
-            folder = args.dataset + '_' + args.train_dir
-            fname = 'SASRec.epoch={}.lr={}.layer={}.head={}.hidden={}.maxlen={}.pth'
-            fname = fname.format(args.num_epochs, args.lr, args.num_blocks, args.num_heads, args.hidden_units, args.maxlen)
-            torch.save(model.state_dict(), os.path.join(folder, fname))
+                if 'recall' in metrics:
+                    recall = metrics['recall']
+                    global best_metric
+                    if recall > best_metric:
+                        best_metric = recall
+                        trials = 0
+                    else:
+                        trials += 1
+                        if trials > patience:
+                            break
 
-    f.close()
-    sampler.close()
-    print("Done")
+                test_time = time.time()
+                print("time interval: %.4f min" % ((test_time-start_time)/60.0))
+                sys.stdout.flush()
+                model.train()
+
+    except KeyboardInterrupt:
+        print('-' * 89)
+        print('Exiting from training early')
+
+
+if __name__ == '__main__':
+
+    print(sys.argv)
+    args = parser.parse_args()
+
+    train_name = 'train'
+    valid_name = 'valid'
+    test_name = 'test'
+
+    if args.dataset == 'ml-1m':
+        path = '/content/SASRecPyTorch/data/ml-1m_data/'
+        # path = './data/ml-1m_data/'
+        item_count = 3417
+        batch_size = args.batch_size
+        maxlen = args.maxlen
+        test_iter = args.test_iter
+    elif args.dataset == 'book':
+        path = '/content/SASRecPyTorch/data/book_data/'
+        item_count = 367983
+        batch_size = 128
+        maxlen = 20
+        test_iter = 1000
+    elif args.dataset == 'ml-10m':
+        path = '/content/SASRecPyTorch/data/ml-10m_data/'
+        item_count = 10197
+        batch_size = args.batch_size
+        maxlen = args.maxlen
+        test_iter = args.test_iter
+
+    train_file = path + args.dataset + '_train.txt'
+    valid_file = path + args.dataset + '_valid.txt'
+    test_file = path + args.dataset + '_test.txt'
+    cate_file = path + args.dataset + '_item_cate.txt'
+    dataset = args.dataset
+
+    if args.p == 'train':
+        train(train_file=train_file, valid_file=valid_file, test_file=test_file, cate_file=cate_file,
+              item_count=item_count, dataset=dataset, batch_size=batch_size, maxlen=maxlen, test_iter=test_iter,
+              model_type=args.model_type, lr=args.lr, max_iter=args.max_iter, patience=args.patience)
+    else:
+        print('do nothing...')

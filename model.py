@@ -19,22 +19,17 @@ class PointWiseFeedForward(torch.nn.Module):
         outputs += inputs
         return outputs
 
-# pls use the following self-made multihead attention layer
-# in case your pytorch version is below 1.16 or for other reasons
-# https://github.com/pmixer/TiSASRec.pytorch/blob/master/model.py
-
 class SASRec(torch.nn.Module):
-    def __init__(self, user_num, item_num, args):
+    def __init__(self, item_num, args):
         super(SASRec, self).__init__()
 
-        self.user_num = user_num
         self.item_num = item_num
         self.dev = args.device
 
         # TODO: loss += args.l2_emb for regularizing embedding vectors during training
         # https://stackoverflow.com/questions/42704283/adding-l1-l2-regularization-in-pytorch
         self.item_emb = torch.nn.Embedding(self.item_num+1, args.hidden_units, padding_idx=0)
-        # self.pos_emb = torch.nn.Embedding(args.maxlen, args.hidden_units) # TO IMPROVE
+        self.pos_emb = torch.nn.Embedding(args.maxlen, args.hidden_units) # TO IMPROVE
         self.emb_dropout = torch.nn.Dropout(p=args.dropout_rate)
 
         self.attention_layernorms = torch.nn.ModuleList() # to be Q for self-attention
@@ -45,6 +40,7 @@ class SASRec(torch.nn.Module):
         self.batch_size = args.batch_size
         self.maxlen = args.maxlen
         self.num_interest = args.num_interest
+        self.softmax = torch.nn.Softmax(1)
 
         self.last_layernorm = torch.nn.LayerNorm(args.hidden_units, eps=1e-8)
 
@@ -67,13 +63,13 @@ class SASRec(torch.nn.Module):
             # self.neg_sigmoid = torch.nn.Sigmoid()
 
     def log2feats(self, log_seqs):
-        if len(log_seqs.shape) == 1:
-            log_seqs = np.reshape(log_seqs, (-1, log_seqs.shape[0]))
+
         seqs = self.item_emb(torch.LongTensor(log_seqs).to(self.dev))
         seqs *= self.item_emb.embedding_dim ** 0.5
-        positions = self.positional_encoding(log_seqs)
-        # seqs += self.pos_emb(torch.LongTensor(positions).to(self.dev))
-        seqs += positions
+        # positions = self.positional_encoding(log_seqs)
+        positions = np.tile(np.array(range(log_seqs.shape[1])), [log_seqs.shape[0], 1])
+        seqs += self.pos_emb(torch.LongTensor(positions).to(self.dev))
+        # seqs += positions
         seqs = self.emb_dropout(seqs)
 
         # log_seqs等于0的变为True，其余的为False
@@ -89,7 +85,6 @@ class SASRec(torch.nn.Module):
         for i in range(len(self.attention_layers)):
             # (sql_len, batch_size, embedding_dim)
             seqs = torch.transpose(seqs, 0, 1)
-            # 线性变换
             Q = self.attention_layernorms[i](seqs)
             mha_outputs, _ = self.attention_layers[i](Q, seqs, seqs, 
                                             attn_mask=attention_mask)
@@ -114,36 +109,56 @@ class SASRec(torch.nn.Module):
             else:
                 user_eb = torch.cat((user_eb, best_centers), 0)
 
-        return user_eb, log_feats
+        return user_eb.view(self.batch_size, self.num_interest, self.hidden_units), log_feats
 
-    def forward(self, user_ids, log_seqs, pos_seqs, neg_seqs): # for training
+    def forward(self, log_seqs): # for training
 
         user_eb, log_feats = self.log2feats(log_seqs) # user_ids hasn't been used yet
-        neg_embs = self.item_emb(torch.LongTensor(neg_seqs).to(self.dev))
-        neg_logits = (log_feats * neg_embs).sum(dim=-1)
-
-        user_eb = user_eb.view(self.batch_size, self.num_interest, self.hidden_units)
-        pos_embs = self.item_emb(torch.LongTensor(pos_seqs).to(self.dev))
-        pos_embs = pos_embs[:, -1, :].unsqueeze(1).repeat(1, self.num_interest, 1)
-        pos_logits = (user_eb * pos_embs).sum(dim=-1)
-        user_eb = user_eb.view(-1, self.hidden_units)
-        h = torch.from_numpy(np.array([i * self.num_interest for i in range(self.batch_size)])).to(self.dev)
-        # (b, 1)
-        index = torch.argmax(pos_logits, -1)
-        user_eb = torch.index_select(user_eb, 0, index + h)
-
-        temp = self.item_emb(torch.LongTensor(pos_seqs[:, -1]).to(self.dev))
-        user_eb = (user_eb * temp).sum(dim=-1)
-
-        return user_eb, neg_logits
-
-    def output_user(self, log_seqs): # for inference
-        user_eb, log_feats = self.log2feats(log_seqs)
+        # neg_embs = self.item_emb(torch.LongTensor(neg_seqs).to(self.dev))
+        # neg_logits = (log_feats * neg_embs).sum(dim=-1)
+        #
+        # user_eb = user_eb.view(self.batch_size, self.num_interest, self.hidden_units)
+        # pos_embs = self.item_emb(torch.LongTensor(pos_seqs).to(self.dev))
+        # pos_embs = pos_embs[:, -1, :].unsqueeze(1).repeat(1, self.num_interest, 1)
+        # pos_logits = (user_eb * pos_embs).sum(dim=-1)
+        # user_eb = user_eb.view(-1, self.hidden_units)
+        # h = torch.from_numpy(np.array([i * self.num_interest for i in range(self.batch_size)])).to(self.dev)
+        # # (b, 1)
+        # index = torch.argmax(pos_logits, -1)
+        # user_eb = torch.index_select(user_eb, 0, index + h)
+        #
+        # temp = self.item_emb(torch.LongTensor(pos_seqs[:, -1]).to(self.dev))
+        # user_eb = (user_eb * temp).sum(dim=-1)
 
         return user_eb
 
+    def predict(self, log_seqs, hist_mask): # for inference
+        user_eb, log_feats = self.log2feats(log_seqs)
+        return user_eb
+
     def output_item(self):
-        return self.item_emb.weight.data
+        return self.item_emb
+
+    # 找出与候选向量最相似的用户兴趣
+    def output_user(self, log_seqs, item_list, hist_mask):
+        # (b, num_interest, embedding_dim)
+        user_eb, log_feats = self.log2feats(log_seqs)
+        # (b, embedding_dim)
+        item_list_emb = self.item_emb(torch.from_numpy(item_list).long().to(self.dev))
+
+        # atten: (batch, num_interest, dim) * (batch, dim, 1) = (batch, num_interest, 1)
+        atten = torch.matmul(user_eb, item_list_emb.view(item_list_emb.shape[0], self.hidden_units, 1))
+        # (batch, num_interest)
+        atten = self.softmax(torch.pow(atten.view(item_list_emb.shape[0], self.num_interest), 1))
+
+        indices = (torch.argmax(atten, dim=1).int()
+                   + (torch.range(0, item_list_emb.shape[0] - 1) * self.num_interest).to(self.dev)).long()
+        # 找出与target item最相似的用户兴趣向量
+        readout = torch.index_select(user_eb.view(-1, self.hidden_units), 0, indices)
+
+        return readout
+
+
 
     def positional_encoding(self, seq_inputs):
         encoded_vec = [pos / np.power(10000.0, 2 * i / self.hidden_units)
