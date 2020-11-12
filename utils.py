@@ -47,8 +47,7 @@ def evaluate_full(test_data, model, args, item_cate_map, save=True, coef=None):
                 if recall > 0:
                     total_ndcg += dcg / idcg
                     total_hitrate += 1
-                if not save:
-                    total_diversity += compute_diversity(I[i], item_cate_map)
+                total_diversity += compute_diversity(I[i], item_cate_map)
         else:
             ni = user_embs.shape[1]
             user_embs = np.reshape(user_embs, [-1, user_embs.shape[-1]])
@@ -100,8 +99,7 @@ def evaluate_full(test_data, model, args, item_cate_map, save=True, coef=None):
                 if recall > 0:
                     total_ndcg += dcg / idcg
                     total_hitrate += 1
-                if not save:
-                    total_diversity += compute_diversity(list(item_list_set), item_cate_map)
+                total_diversity += compute_diversity(list(item_list_set), item_cate_map)
 
         total += len(item_id)
 
