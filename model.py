@@ -132,7 +132,7 @@ class SASRec(torch.nn.Module):
 
         return user_eb
 
-    def predict(self, log_seqs, hist_mask): # for inference
+    def predict(self, log_seqs): # for inference
         user_eb, log_feats = self.log2feats(log_seqs)
         return user_eb
 
