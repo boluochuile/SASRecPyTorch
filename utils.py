@@ -110,8 +110,6 @@ def evaluate_full(test_data, model, args, item_cate_map, save=True, coef=None):
     hitrate = total_hitrate * 1.0 / total
     diversity = total_diversity * 1.0 / total
 
-    if save:
-        return {'recall': recall, 'ndcg': ndcg, 'hitrate': hitrate}
     return {'recall': recall, 'ndcg': ndcg, 'hitrate': hitrate, 'diversity': diversity}
 
 def prepare_data(src, target):
