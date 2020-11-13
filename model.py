@@ -79,17 +79,17 @@ class SASRec(torch.nn.Module):
         # ~ 取反
         seqs *= ~timeline_mask.unsqueeze(-1) # broadcast in last dim
 
-        # sql_len
-        tl = seqs.shape[1] # time dim len for enforce causality
-        # ~torch.tril: 上三角为True(不包括对角线)，下三角为False(包括对角线)
-        attention_mask = ~torch.tril(torch.ones((tl, tl), dtype=torch.bool, device=self.dev))
+        #         # sql_len
+        # tl = seqs.shape[1] # time dim len for enforce causality
+        # # ~torch.tril: 上三角为True(不包括对角线)，下三角为False(包括对角线)
+        # attention_mask = ~torch.tril(torch.ones((tl, tl), dtype=torch.bool, device=self.dev))
 
         for i in range(len(self.attention_layers)):
             # (sql_len, batch_size, embedding_dim)
             seqs = torch.transpose(seqs, 0, 1)
             Q = self.attention_layernorms[i](seqs)
-            mha_outputs, _ = self.attention_layers[i](Q, seqs, seqs, 
-                                            attn_mask=attention_mask)
+            mha_outputs, _ = self.attention_layers[i](Q, seqs, seqs)
+                                            # attn_mask=attention_mask)
                                             # key_padding_mask=timeline_mask
                                             # need_weights=False) this arg do not work?
             seqs = Q + mha_outputs
@@ -140,7 +140,7 @@ class SASRec(torch.nn.Module):
 
     def forward(self, log_seqs): # for training
 
-        user_eb, log_feats = self.log2feats2(log_seqs) # user_ids hasn't been used yet
+        user_eb, log_feats = self.log2feats(log_seqs) # user_ids hasn't been used yet
         # neg_embs = self.item_emb(torch.LongTensor(neg_seqs).to(self.dev))
         # neg_logits = (log_feats * neg_embs).sum(dim=-1)
         #
@@ -160,7 +160,7 @@ class SASRec(torch.nn.Module):
         return user_eb
 
     def predict(self, log_seqs): # for inference
-        user_eb, log_feats = self.log2feats2(log_seqs)
+        user_eb, log_feats = self.log2feats(log_seqs)
         return user_eb
 
     def output_item(self):
@@ -169,7 +169,7 @@ class SASRec(torch.nn.Module):
     # 找出与候选向量最相似的用户兴趣
     def output_user(self, log_seqs, item_list, hist_mask):
         # (b, num_interest, embedding_dim)
-        user_eb, log_feats = self.log2feats2(log_seqs)
+        user_eb, log_feats = self.log2feats(log_seqs)
         # (b, embedding_dim)
         item_list_emb = self.item_emb(torch.from_numpy(item_list).long().to(self.dev))
 
